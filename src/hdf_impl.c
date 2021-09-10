@@ -5,6 +5,7 @@
  */
 
 /* The "usual" OCaml includes */
+#define CAML_INTERNALS
 #include <caml/alloc.h>
 #include <caml/callback.h>
 #include <caml/fail.h>
@@ -631,53 +632,6 @@ value ml_SDsetfillvalue_int32(value sdsid, value fill) {
 //
 //
 
-// Find the total number of elements in a Bigarray
-value ml_ba_elems(value ba) {
-    CAMLparam1(ba);
-
-    struct caml_bigarray * b = Bigarray_val(ba);
-    int dims;
-    dims = b->num_dims;
-    int i;
-    int elems = 1;
-    for (i = 0; i < dims; i++) {
-        elems = elems * b->dim[i];
-    }
-    CAMLreturn(Val_int(elems));
-}
-
-// Return size (in bytes) of an element of a Bigarray.
-// Only works for types fixed across platforms, so no nativeint
-// or camlint support.
-value ml_ba_element_size_in_bytes(value ba) {
-    CAMLparam1(ba);
-
-    struct caml_bigarray * b = Bigarray_val(ba);
-    int size;
-    switch((b->flags) & BIGARRAY_KIND_MASK) {
-        default:
-            caml_invalid_argument("Unhandled Bigarray kind in ml_ba_element_size_in_bytes");
-        case BIGARRAY_FLOAT32:
-        case BIGARRAY_INT32:
-            size = 4;
-            break;
-        case BIGARRAY_FLOAT64:
-        case BIGARRAY_INT64:
-            size = 8;
-            break;
-        case BIGARRAY_SINT8:
-        case BIGARRAY_UINT8:
-            size = 1;
-            break;
-        case BIGARRAY_SINT16:
-        case BIGARRAY_UINT16:
-            size = 2;
-            break;
-    }
-
-    CAMLreturn( Val_int(size) );
-}
-
 // Cast a Bigarray of one type to another.
 // This is a cast over the same bytes, so, for example,
 // n uint8 elements -> (n / 4) float32 elements.
@@ -716,12 +670,10 @@ value ml_ba_cast(value ba_source, value ba_target) {
 
     // Loop over all bs elements, applying the function to each and
     // set the corresponding bt value.
-    int source_elems = Int_val( ml_ba_elems(ba_source) );
-    int source_size = Int_val( ml_ba_element_size_in_bytes(ba_source) )
-        * source_elems;
-    int target_elems = Int_val( ml_ba_elems(ba_target) );
-    int target_size = Int_val( ml_ba_element_size_in_bytes(ba_target) )
-        * target_elems;
+    int source_elems = caml_ba_num_elts(bs);
+    int source_size = source_elems * caml_ba_element_size[bs->flags & CAML_BA_KIND_MASK];
+    int target_elems = caml_ba_num_elts(bt);
+    int target_size = target_elems * caml_ba_element_size[bt->flags & CAML_BA_KIND_MASK];
     if ( source_size != target_size ) {
         // Throw an exception if the dims don't match.
         char exception_message[MAX_EXCEPTION_MESSAGE_LENGTH];
@@ -748,6 +700,8 @@ value ml_ba_cast(value ba_source, value ba_target) {
             DO_CAST(int32)
         case BIGARRAY_INT64:
             DO_CAST(int64)
+        case CAML_BA_CHAR:
+            DO_CAST(uint8)
     }
 
     CAMLreturn( Val_unit );
